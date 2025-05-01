@@ -2,12 +2,12 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd
+import statsmodels.api as sm
 
 data = pd.read_csv("https://raw.githubusercontent.com/4GeeksAcademy/linear-regression-project-tutorial/main/medical_insurance_cost.csv")
 data.head()
-
 data.describe()
-
+datacore = data.copy()
 print("cantidad de filas y columnas", data.shape)
 print("Nombre de las columnas",data.columns)
 data.info()
@@ -93,7 +93,6 @@ plt.show()
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-datacore = data.copy()
 # Seleccionamos solo las columnas numéricas
 num_data = datacore.select_dtypes(include='number')
 
@@ -109,28 +108,34 @@ plt.show()
 #Maztriz de correlacion variables numericas y categoricas.
 
 datacore.columns
+datacore["region"].value_counts()
 
-datacore["sex"]  = pd.factorize(datacore["sex"])[0]
-datacore["smoker"]  = pd.factorize(datacore["smoker"])[0]
-datacore["region"]  = pd.factorize(datacore["region"])[0]
+datacore["sex_codificado"]  = datacore["sex"].map({'female': 0, 'male': 1})
+datacore["smoker_codificado"]  = datacore["smoker"].map({'yes': 1, 'no': 0})
+#datacore["region_codificado"]  = datacore["region"].map({'southeast': 1, 'northeast': 0, "southwest": 2})
+datacore = pd.get_dummies(datacore, columns=['region'], drop_first=False)
+
 
 
 # Ver el resultado
 
 fig, axes = plt.subplots(figsize=(15, 15))
 
-sns.heatmap(datacore[['age', 'sex', 'bmi', 'children', 'smoker', 'region', 'charges']].corr(), annot = True, fmt = ".2f")
+sns.heatmap(datacore[['age', "sex_codificado", 'bmi', 'children', "smoker_codificado", 'charges', "region_northeast", "region_northwest","region_southeast","region_southwest"]].corr(), annot = True, fmt = ".2f")
 
 plt.tight_layout()
 
 # Draw Plot
 plt.show()
 
+datacore.head()
+
+
 
 #Eliminamos variables que carecen de inportancia en nuestro analisis
 datafinal = data.copy()
 # Eliminar columnas solo si existen
-columns_to_drop = ["children", "sex","region"]
+columns_to_drop = ["children", "sex"]
 columns_to_drop = [col for col in columns_to_drop if col in datafinal.columns]  # Filtrar solo las que existen
 datafinal= datafinal.drop(columns=columns_to_drop)
 
@@ -224,16 +229,93 @@ print(datafinal.shape, " VS ", datafinal_limpio.shape)
 
 #Paso 3: Construir un modelo de regresion lineal 
 
+#statemodels
+X= datacore.drop(["charges","smoker","sex"], axis=1) # quitamos columnas que no necesitamos para el entrenamiento de nuestro modelo
+bool_columns = X.select_dtypes(include="bool").columns #Seleccionamos columnas que transformamos en false o true para convertirlos en valor numerico, ya que solo acepta valores int o float
+X[bool_columns]= X[bool_columns].astype(int) # Convertimos en int
+X= sm.add_constant(X)
+Y= datacore["charges"]
+model= sm.OLS(Y, X).fit()
+#print(X.dtypes)
+#print(Y.dtypes)
+#print(bool_columns)
+
+print(model.summary())
+
+model.params["sex_codificado"]
+
+X= datacore.drop(["charges","smoker","sex","sex_codificado"], axis=1) # quitamos columnas que no necesitamos para el entrenamiento de nuestro modelo
+bool_columns = X.select_dtypes(include="bool").columns #Seleccionamos columnas que transformamos en false o true para convertirlos en valor numerico, ya que solo acepta valores int o float
+X[bool_columns]= X[bool_columns].astype(int) # Convertimos en int
+X= sm.add_constant(X)
+Y= datacore["charges"]
+model= sm.OLS(Y, X).fit()
+print(datacore.columns)
+
+print(model.summary())
+
+y_pred = model.predict(X)
+print(y_pred )
+#Grafica de dispersion 
+plt.figure(figsize=(8,6))
+plt.scatter(x=Y, y=y_pred)
+plt.xlabel("Valor real (charges)")
+plt.ylabel("Valor prediccion del modelo")
+plt.title("Prediccion Vs Real")
+plt.plot([Y.min(), Y.max()],[Y.min(), Y.max()], "r--")
+plt.grid(True)
+plt.show()
+
+#con limpieza de outlers
+
+#Codificacion de variables
+datafinal_limpio["smoker_codificado"]  =  datafinal_limpio["smoker"].map({'yes': 1, 'no': 0})
+#datacore["region_codificado"]  = datacore["region"].map({'southeast': 1, 'northeast': 0, "southwest": 2})
+datafinal_limpio = pd.get_dummies( datafinal_limpio, columns=['region'], drop_first=False)
+
+#Entrenar modelo
+X= datafinal_limpio.drop(["charges","smoker"], axis=1) # quitamos columnas que no necesitamos para el entrenamiento de nuestro modelo
+bool_columns = X.select_dtypes(include="bool").columns #Seleccionamos columnas que transformamos en false o true para convertirlos en valor numerico, ya que solo acepta valores int o float
+X[bool_columns]= X[bool_columns].astype(int) # Convertimos en int
+X= sm.add_constant(X)
+Y= datafinal_limpio["charges"]
+model= sm.OLS(Y, X).fit()
+print(datacore.columns)
+
+y_pred = model.predict(X)
+print(y_pred )
+#Grafica de dispersion 
+plt.figure(figsize=(8,6))
+plt.scatter(x=Y, y=y_pred)
+plt.xlabel("Valor real (charges)")
+plt.ylabel("Valor prediccion del modelo")
+plt.title("Prediccion Vs Real")
+plt.plot([Y.min(), Y.max()],[Y.min(), Y.max()], "r--")
+plt.grid(True)
+plt.show()
+
+from sklearn.metrics import mean_absolute_error
+mae = mean_absolute_error(Y, y_pred)
+print(f"MAE: {mae:.2f}")
+
+print(model.summary())
+
+#Sklearn
+
+print(datafinal_limpio.head())
+
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 
 # Variable objetivo
 y = datafinal_limpio["charges"]
 # Variables predictoras
-X = datafinal_limpio.drop(["charges"], axis=1)
-
+X = datafinal_limpio.drop(["charges",'smoker'], axis=1)
+X= sm.add_constant(X)
+bool_columns = X.select_dtypes(include="bool").columns #Seleccionamos columnas que transformamos en false o true para convertirlos en valor numerico, ya que solo acepta valores int o float
+X[bool_columns]= X[bool_columns].astype(int) # Convertimos en int
 #Convertimos columnas en 0s y 1s
-X = pd.get_dummies(X, columns=['smoker'])
+#X = pd.get_dummies(X, columns=[])
 
 # Separar en entrenamiento y prueba (80% - 20%)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -250,10 +332,12 @@ print(f"Coeficientes (b1, b2): {model.coef_}")
 y_pred = model.predict(X_test)
 y_pred
 
+
 from sklearn.metrics import mean_squared_error, r2_score
 
 print(f"Error cuadrático medio: {mean_squared_error(y_test, y_pred)}")
 print(f"Coeficiente de determinación: {r2_score(y_test, y_pred)}")
+
 
 plt.figure(figsize=(8, 6))
 sns.scatterplot(x=y_test, y=y_pred)
@@ -264,7 +348,6 @@ plt.title("Ajuste del modelo de regresión lineal")
 plt.tight_layout()
 plt.show()
 
-#Segundo modelo sin limpiar outlers
 
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
@@ -275,7 +358,7 @@ y = datafinal["charges"]
 X = datafinal.drop(["charges"], axis=1)
 
 #Convertimos columnas en 0s y 1s
-X = pd.get_dummies(X, columns=['smoker'])
+X = pd.get_dummies(X, columns=['smoker',"region"])
 
 # Separar en entrenamiento y prueba (80% - 20%)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -289,6 +372,9 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 y_pred
 
+print(Y.shape)
+print(y_pred.shape)
+
 print(f"Intercepto (a): {model.intercept_}")
 print(f"Coeficientes (b1, b2): {model.coef_}")
 
@@ -296,6 +382,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 
 print(f"Error cuadrático medio: {mean_squared_error(y_test, y_pred)}")
 print(f"Coeficiente de determinación: {r2_score(y_test, y_pred)}")
+
 
 plt.figure(figsize=(8, 6))
 sns.scatterplot(x=y_test, y=y_pred)
@@ -306,6 +393,8 @@ plt.title("Ajuste del modelo de regresión lineal")
 plt.tight_layout()
 plt.show()
 
+
 #RMSE más bajo con outliers eliminados sugiere que el modelo se ajusta mejor en términos absolutos a los datos limpios (predice más cerca del valor real).
 
 #R² más alto con outliers presentes indica que el modelo explica más varianza cuando los outliers están incluidos. Pero esto no necesariamente es bueno: los outliers pueden estar sesgando el modelo y dándole una falsa sensación de “mejor ajuste”.
+
